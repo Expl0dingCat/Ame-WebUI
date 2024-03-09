@@ -1,3 +1,31 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+.message h1 {
+    @apply text-3xl font-bold;
+}
+
+.message h2 {
+    @apply text-2xl font-semibold;
+}
+
+.message h3 {
+    @apply text-xl font-medium;
+}
+
+.message a {
+    @apply text-blue-300 underline underline-offset-2;
+}
+
+.message pre > code {
+    @apply bg-slate-900 p-4 my-2 rounded-md text-sm;
+}
+
+.hljs-copy-button {
+    @apply mr-[-0.5rem];
+}
+
+.hljs-copy-button[data-copied="true"] {
+    @apply px-2 font-sans;
+}
