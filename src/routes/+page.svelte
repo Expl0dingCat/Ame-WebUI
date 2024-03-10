@@ -19,9 +19,12 @@
         // disable the textarea
         textarea.disabled = true;
         // set the message
-        let message = textarea.value;
+        let message = textarea.value.trim();
         // clear the textarea
         textarea.value = "";
+        // change the textarea height
+        textarea.style.height = "auto";
+        textarea.style.height = `${textarea.scrollHeight + 4}px`;
         // determine if we've scrolled to the bottom
         let scrolled = container.scrollTop === container.scrollTopMax;
         // set sending message to true
