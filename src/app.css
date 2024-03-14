@@ -30,6 +30,10 @@
     @apply py-0.5
 }
 
+.message hr {
+    @apply my-2 h-0 rounded-full border-t-[1.5px] border-blue-100;
+}
+
 .message pre>code {
     @apply bg-slate-900 p-4 my-2 rounded-md text-sm;
 }

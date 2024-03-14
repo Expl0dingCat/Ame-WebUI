@@ -8,16 +8,18 @@
 
     // state
     let state = null;
-    let url = "/";
+    let url = dev ? "http://localhost:8080/" : "/";
     let messages = [];
     let textarea;
     let container;
+    let chunks = [];
+    let scrolled = true;
+    let mediaRecorder;
     let sendingMessage = false;
+    let recordingAudio = false;
 
     // send message
     async function sendMessage() {
-        // disable the textarea
-        textarea.disabled = true;
         // set the message
         let message = textarea.value.trim();
         // clear the textarea
@@ -25,8 +27,6 @@
         // change the textarea height
         textarea.style.height = "auto";
         textarea.style.height = `${textarea.scrollHeight + 4}px`;
-        // determine if we've scrolled to the bottom
-        let scrolled = container.scrollTop === container.scrollTopMax;
         // set sending message to true
         sendingMessage = true;
         // change the messages array
@@ -50,19 +50,21 @@
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ input: message }),
         }).then((res) => res.json());
-        // check scrolling again
-        scrolled = container.scrollTop === container.scrollTopMax;
         // turn off sending message
         sendingMessage = false;
-        // reenable the textarea
-        textarea.disabled = false;
+        // if tts is enabled, fetch the audio wav and make a blob
+        let blobUrl = await fetch(`${url}ame_speech.wav`)
+            .then((res) => res.blob())
+            .then((blob) => URL.createObjectURL(blob));
         // add the message
         messages = [
             ...messages,
             {
                 role: "assistant",
-                type: "text",
+                type: response.tts ? "augmented" : "text",
                 content: response.output,
+                index: messages.length,
+                audio: response.tts ? blobUrl : null,
             },
         ];
         // if we were scrolled to the bottom
@@ -73,94 +75,111 @@
             );
     }
 
-    // add dummy messages
-    function addDummyMessages() {
-        messages = [
-            {
-                role: "assistant",
-                type: "text",
-                content: "mrrp mrrp meoooow :3 nya!! nya meow :3",
-            },
-            {
-                role: "user",
-                type: "text",
-                content: "what",
-            },
-            {
-                role: "assistant",
-                type: "text",
-                content: `# This is a header
-
-This is a paragraph.
-
-* This is a list
-* With two items
-    1. And a sublist
-    2. That is ordered
-        * With another
-        * Sublist inside
-
-Sure, here's a simple table with random data:
-
-| ID | Name    | Age | Occupation  |
-|----|---------|-----|-------------|
-| 1  | Alice   | 28  | Engineer    |
-| 2  | Bob     | 35  | Teacher     |
-| 3  | Charlie | 42  | Doctor      |
-| 4  | David   | 30  | Artist      |
-| 5  | Emma    | 25  | Programmer  |
-
-This is a basic table with columns for ID, Name, Age, and Occupation, and some randomly assigned data in each row.
-
-~~Woof!~~ Meow!
-
-$\\int_{0}^{1} e^{-x^2} \\, dx = \\frac{\\sqrt{\\pi}}{2}$
-
-This equation represents the definite integral of the function $e^{-x^2}$ from $0$ to $1$, which equals $\\frac{\\sqrt{\\pi}}{2}$. It's a special case of the Gaussian integral, which has significance in probability theory, statistics, and various branches of physics.
-
-> This is a block quote.
-> 
-> Woof!
-
-Isn't that crazy?
-
-\`\`\`c
-#import <stdio.h>
-
-int main(void) {
-    printf("nya!\\n");
-    return 0;
-}
-\`\`\``,
-            },
-            {
-                role: "user",
-                type: "text",
-                content: "would you rather use grok or chatgpt",
-            },
-            {
-                role: "assistant",
-                type: "text",
-                content: "chatgpt, duh",
-            },
-        ];
-    }
-
     // connect to the server
     async function connect() {
         state = "connected";
-        // addDummyMessages();
+    }
+
+    // start recording
+    async function startRecording() {
+        recordingAudio = true;
+        mediaRecorder.start();
+    }
+
+    // cancel recording
+    async function cancelRecording() {
+        recordingAudio = false;
+        mediaRecorder.canceled = true;
+        mediaRecorder.stop();
+    }
+
+    // send recording
+    async function sendRecording() {
+        recordingAudio = false;
+        sendingMessage = true;
+        mediaRecorder.stop();
     }
 
     // init shit when the website fully loads
-    onMount(() => {
+    onMount(async () => {
         state = "disconnected";
         marked.use(markedKatex());
         hljs.addPlugin(new CopyButtonPlugin());
-        // connect(); // comment this out later
+        mediaRecorder = new MediaRecorder(
+            await navigator.mediaDevices.getUserMedia({ audio: true }),
+            {
+                mimeType: "audio/webm",
+            },
+        );
+        // when we stop recording
+        mediaRecorder.ondataavailable = async (e) => {
+            // push audio chunks
+            chunks.push(e.data);
+            // if the recording wasn't canceled
+            if (!mediaRecorder.canceled) {
+                // create a blob from the chunks
+                let blob = new Blob(chunks, {
+                    type: "audio/webm",
+                });
+                // add to the messages array
+                messages = [
+                    ...messages,
+                    {
+                        role: "user",
+                        type: "audio",
+                        audio: window.URL.createObjectURL(blob),
+                    },
+                ];
+                // if we were scrolled to the bottom
+                if (scrolled)
+                    setTimeout(
+                        () => (container.scrollTop = container.scrollTopMax),
+                        40,
+                    );
+                // make a formdata thing and add the recording
+                let formData = new FormData();
+                formData.append("recording", blob);
+                // get the response from the server
+                let response = await fetch(`${url}api/v1/full`, {
+                    method: "POST",
+                    body: formData,
+                }).then((res) => res.json());
+                // turn off sending message
+                sendingMessage = false;
+                // if tts is enabled, fetch the audio wav and make a blob
+                let blobUrl = await fetch(`${url}ame_speech.wav`)
+                    .then((res) => res.blob())
+                    .then((blob) => URL.createObjectURL(blob));
+                // add the message
+                messages = [
+                    ...messages,
+                    {
+                        role: "assistant",
+                        type: response.tts ? "augmented" : "text",
+                        content: response.output,
+                        index: messages.length,
+                        audio: response.tts ? blobUrl : null,
+                    },
+                ];
+                // if we were scrolled to the bottom
+                if (scrolled)
+                    setTimeout(
+                        () => (container.scrollTop = container.scrollTopMax),
+                        40,
+                    );
+            }
+            // reset canceled
+            mediaRecorder.canceled = false;
+            // clear chunks
+            chunks = [];
+        };
     });
 
     $: if (messages.length !== 0) setTimeout(hljs.highlightAll, 20);
+
+    function processScroll() {
+        scrolled = container.scrollTop === container.scrollTopMax;
+    }
 </script>
 
 <div
@@ -196,6 +215,12 @@ int main(void) {
                     {#if dev}
                         <input
                             bind:value={url}
+                            on:keydown={(e) => {
+                                if (e.key === "Enter" && !e.shiftKey) {
+                                    e.preventDefault();
+                                    connect();
+                                }
+                            }}
                             class="bg-blue-100 text-ame p-4 h-10 align-middle rounded-full focus:outline-none focus:shadow-lg hover:shadow-lg hover:shadow-blue-200/30 focus:shadow-blue-200/30 transition-shadow ease-in-out duration-200"
                         />
                     {/if}
@@ -218,6 +243,7 @@ int main(void) {
         >
             <div
                 bind:this={container}
+                on:scroll={processScroll}
                 class="flex flex-col flex-grow gap-4 overflow-y-scroll w-full"
             >
                 <div class="h-1 w-48 shrink-0" />
@@ -250,30 +276,56 @@ int main(void) {
                     </p>
                 {:else}
                     {#each messages as message}
-                        {#if message.type === "text"}
-                            <div
-                                class="message pt-2 pb-4 px-4 rounded-xl border-2 border-blue-100 max-w-[80%] hyphens-auto leading-snug {message.role ===
-                                'user'
-                                    ? 'self-start'
-                                    : 'self-start bg-rain'}"
-                            >
-                                {#if message.role === "user"}
-                                    <div class="align-middle py-2 flex gap-1.5">
-                                        <img
-                                            class="h-6 w-6 rounded-full bg-blue-100 inline"
-                                            src="/you_pfp.png"
-                                        />
-                                        <span class="font-semibold">You</span>
-                                    </div>
-                                {:else}
-                                    <div class="align-middle py-2 flex gap-1.5">
-                                        <img
-                                            class="h-6 w-6 rounded-full bg-blue-100 inline"
-                                            src="/ame_pfp.jpg"
-                                        />
-                                        <span class="font-semibold">Ame</span>
-                                    </div>
-                                {/if}
+                        <div
+                            class="message flex flex-col pt-2 pb-4 px-4 rounded-xl border-2 border-blue-100 max-w-[80%] hyphens-auto leading-snug {message.role ===
+                            'user'
+                                ? 'self-start'
+                                : 'self-start bg-rain'}"
+                        >
+                            {#if message.role === "user"}
+                                <div class="align-middle py-2 flex gap-1.5">
+                                    <img
+                                        class="h-6 w-6 rounded-full bg-blue-100 inline"
+                                        src="/you_pfp.png"
+                                    />
+                                    <span class="font-semibold">You</span>
+                                </div>
+                            {:else}
+                                <div class="align-middle py-2 flex gap-1.5">
+                                    <img
+                                        class="h-6 w-6 rounded-full bg-blue-100 inline self-center"
+                                        src="/ame_pfp.jpg"
+                                    />
+                                    <span class="font-semibold self-center"
+                                        >Ame</span
+                                    >
+                                    <span class="flex-grow"></span>
+                                    <button
+                                        class="self-center align-middle hover:text-slate-400 transition-colors ease-in-out duration-200"
+                                        on:click={() => {
+                                            navigator.clipboard.writeText(
+                                                message.content,
+                                            );
+                                            message.copyButton.innerText =
+                                                "done";
+                                            setTimeout(
+                                                () =>
+                                                    (message.copyButton.innerText =
+                                                        "content_copy"),
+                                                2000,
+                                            );
+                                        }}
+                                    >
+                                        <span
+                                            class="material-icons text-base font-bold"
+                                            bind:this={message.copyButton}
+                                        >
+                                            content_copy
+                                        </span>
+                                    </button>
+                                </div>
+                            {/if}
+                            {#if message.type !== "audio"}
                                 <SvelteMarkdown
                                     source={message.content}
                                     options={marked.defaults}
@@ -282,8 +334,26 @@ int main(void) {
                                         inlineKatex: katex,
                                     }}
                                 />
-                            </div>
-                        {:else}{/if}
+                            {/if}
+                            {#if message.type !== "text"}
+                                <audio
+                                    controls
+                                    autoplay={messages.length - 1 ===
+                                    message.index
+                                        ? "autoplay"
+                                        : undefined}
+                                >
+                                    <source
+                                        src={message.audio}
+                                        type={message.role === "assistant"
+                                            ? "audio/wav"
+                                            : "audio/webm"}
+                                    />
+                                    Your browser does not support audio. Please get
+                                    one that does.
+                                </audio>
+                            {/if}
+                        </div>
                     {/each}
                 {/if}
                 {#if sendingMessage}
@@ -301,25 +371,66 @@ int main(void) {
             </div>
         </main>
         <div
-            class="absolute bottom-8 lg:w-[48vw] md:w-[68vw] w-[88vw] flex gap-2"
+            class="absolute bottom-8 lg:w-[48vw] md:w-[68vw] w-[88vw] flex {recordingAudio
+                ? 'justify-center p-4 backdrop-blur-md bg-transparent border-2 border-blue-100 rounded-3xl'
+                : ''} gap-2"
         >
-            <textarea
-                rows="1"
-                style="height: auto"
-                placeholder="Input a message..."
-                class="flex-grow backdrop-blur-md bg-transparent border-2 border-blue-100 p-4 align-middle rounded-3xl focus:outline-none focus:shadow-lg hover:shadow-lg hover:shadow-blue-200/30 focus:shadow-blue-200/30 transition-shadow ease-in-out duration-200"
-                bind:this={textarea}
-                on:input={() => {
-                    textarea.style.height = "auto";
-                    textarea.style.height = `${textarea.scrollHeight + 4}px`;
-                }}
-                on:keydown={(e) => {
-                    if (e.key === "Enter" && !e.shiftKey) {
-                        e.preventDefault();
-                        sendMessage();
-                    }
-                }}
-            />
+            {#if !recordingAudio}
+                <textarea
+                    autofocus
+                    rows="1"
+                    style="height: auto"
+                    placeholder="Input a message..."
+                    class="flex-grow backdrop-blur-md bg-transparent border-2 border-blue-100 p-4 align-middle rounded-3xl focus:outline-none focus:shadow-lg hover:shadow-lg hover:shadow-blue-200/30 focus:shadow-blue-200/30 transition-shadow ease-in-out duration-200"
+                    bind:this={textarea}
+                    on:input={() => {
+                        textarea.style.height = "auto";
+                        textarea.style.height = `${textarea.scrollHeight + 4}px`;
+                    }}
+                    on:keydown={(e) => {
+                        if (e.key === "Enter" && !e.shiftKey) {
+                            e.preventDefault();
+                            sendMessage();
+                        }
+                    }}
+                    disabled={sendingMessage ? "disabled" : undefined}
+                />
+                <button
+                    class="hover:text-slate-400 transition-colors ease-in-out duration-200"
+                    on:click={startRecording}
+                    disabled={sendingMessage ? "disabled" : undefined}
+                >
+                    <span class="material-icons">mic</span>
+                </button>
+            {:else}
+                <div
+                    class="flex w-full gap-4 place-items-center justify-center"
+                >
+                    <div class="flex gap-2 justify-center align-middle">
+                        <span
+                            class="align-middle material-icons text-red-500 animate-pulse select-none"
+                            >mic</span
+                        >
+                        <span class="align-middle text-red-500 font-semibold"
+                            >Recording...</span
+                        >
+                    </div>
+                    <button
+                        class="bg-blue-200 text-ame px-4 h-10 align-middle rounded-full hover:shadow-lg hover:shadow-blue-200/30 transition-shadow ease-in-out duration-200"
+                        on:click={cancelRecording}
+                    >
+                        <span class="material-icons align-middle">cancel</span>
+                        <span class="align-middle">Cancel</span>
+                    </button>
+                    <button
+                        class="bg-blue-200 text-ame px-4 h-10 align-middle rounded-full hover:shadow-lg hover:shadow-blue-200/30 transition-shadow ease-in-out duration-200"
+                        on:click={sendRecording}
+                    >
+                        <span class="material-icons align-middle">send</span>
+                        <span class="align-middle">Send</span>
+                    </button>
+                </div>
+            {/if}
         </div>
     {/if}
 </div>
