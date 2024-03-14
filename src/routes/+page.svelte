@@ -150,6 +150,9 @@
                 let blobUrl = await fetch(`${url}ame_speech.wav`)
                     .then((res) => res.blob())
                     .then((blob) => URL.createObjectURL(blob));
+                // modify the last message
+                messages[messages.length - 1].type = "augmented";
+                messages[messages.length - 1].content = response.input;
                 // add the message
                 messages = [
                     ...messages,
