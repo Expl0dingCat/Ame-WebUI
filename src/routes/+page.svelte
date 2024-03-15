@@ -22,6 +22,8 @@
     async function sendMessage() {
         // set the message
         let message = textarea.value.trim();
+		// return if the message is blank
+		if (message.length === 0) return;
         // clear the textarea
         textarea.value = "";
         // change the textarea height
@@ -273,9 +275,9 @@
                     </ul>
                     <p class="hyphens-auto">
                         Please note that the Ame developers are not responsible
-                        for any inaccurate or harmful generations. As our LLaMA
-                        model is uncensored, users are in control of how safe
-                        they want their generations to be.
+                        for any inaccurate or harmful generations. Since users provide
+                        their own models, guardrails are typically personalized,
+                        and not chosen by the Ame team.
                     </p>
                 {:else}
                     {#each messages as message}
