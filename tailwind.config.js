@@ -11,7 +11,7 @@ export default {
         },
         fontFamily: {
             sans: ["-apple-system", "BlinkMacSystemFont", "Inter", "Helvetica", "sans-serif"],
-            mono: ["-apple-system", "'Fira Code'", "'Roboto Mono'", "Consolas", "monospace"]
+            mono: ["ui-system", "'Fira Code'", "'Roboto Mono'", "Consolas", "monospace"]
         }
     },
     plugins: [],
